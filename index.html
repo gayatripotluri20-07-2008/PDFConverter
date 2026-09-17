@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth.js/1.8.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/markdown-it/14.1.0/markdown-it.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.5/tesseract.min.js"></script>
 </head>
 <body class="bg-slate-900 min-h-screen flex items-center justify-center p-4">
 
@@ -20,6 +23,10 @@
                 <input type="password" id="apiKey" placeholder="Paste Gemini API Key" class="flex-1 p-3 rounded-lg bg-slate-700 text-white placeholder-slate-400 border border-slate-600 focus:ring-2 focus:ring-teal-500 outline-none">
                 <a href="#" id="apiHelpLink" class="ml-2 text-teal-400 hover:text-teal-300 underline">How to get your personal API id?</a>
             </div>
+        </div>
+        <div class="flex flex-col mb-4">
+            <label for="customPrompt" class="text-slate-400 mb-1">Custom AI Prompt (optional)</label>
+            <textarea id="customPrompt" rows="3" class="w-full p-3 rounded-lg bg-slate-700 text-white placeholder-slate-400 border border-slate-600 focus:ring-2 focus:ring-teal-500 outline-none" placeholder="Enter additional instructions for the AI summarization..."></textarea>
         </div>
 
         <!-- Modal for API help -->
@@ -51,7 +58,7 @@
         </select>
 
         <div id="dropZone" class="border-4 border-dashed border-slate-600 rounded-xl p-10 text-center cursor-pointer hover:border-teal-500 transition-all duration-300">
-            <input type="file" id="fileInput" class="hidden" accept="application/pdf">
+            <input type="file" id="fileInput" class="hidden" accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png">
             <div id="dropText">
                 <p class="text-lg font-medium text-white">Drag & Drop PDF here</p>
                 <p class="text-sm text-slate-400 mt-1">or click to upload</p>
@@ -65,6 +72,23 @@
             Download Presentation
         </button>
     </div>
+
+        <!-- Slide Preview Modal -->
+        <div id="slidePreviewModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+                <div class="flex justify-between items-start mb-4">
+                    <h2 class="text-xl font-semibold text-slate-900">Preview & Edit Slides</h2>
+                    <button id="previewCloseBtn" class="text-slate-400 hover:text-slate-600">&times;</button>
+                </div>
+                <div id="slidesContainer" class="space-y-4">
+                    <!-- Slides will be inserted here -->
+                </div>
+                <div class="flex justify-end mt-4">
+                    <button id="previewCancelBtn" class="mr-3 px-4 py-2 bg-slate-600 text-white rounded hover:bg-slate-500">Cancel</button>
+                    <button id="previewConfirmBtn" class="px-4 py-2 bg-teal-500 text-white rounded hover:bg-teal-600">Generate Presentation</button>
+                </div>
+            </div>
+        </div>
 
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -80,9 +104,15 @@
         const apiModal = document.getElementById('apiModal');
         const modalCloseBtn = document.getElementById('modalCloseBtn');
         const styleSelect = document.getElementById('styleSelect');
+        const previewModal = document.getElementById('slidePreviewModal');
+        const previewCloseBtn = document.getElementById('previewCloseBtn');
+        const previewCancelBtn = document.getElementById('previewCancelBtn');
+        const previewConfirmBtn = document.getElementById('previewConfirmBtn');
+        const slidesContainer = document.getElementById('slidesContainer');
 
         let presentation = null;
         let selectedStyle = styleSelect.value;
+        let slidesData = []; // will hold the slide objects
 
         // Modal controls
         apiHelpLink.addEventListener('click', e => {
@@ -94,6 +124,13 @@
         });
         apiModal.addEventListener('click', e => {
             if (e.target === apiModal) apiModal.classList.add('hidden');
+        });
+
+        // Preview modal controls
+        previewCloseBtn.addEventListener('click', () => previewModal.classList.add('hidden'));
+        previewCancelBtn.addEventListener('click', () => previewModal.classList.add('hidden'));
+        previewModal.addEventListener('click', e => {
+            if (e.target === previewModal) previewModal.classList.add('hidden');
         });
 
         dropZone.addEventListener('click', () => fileInput.click());
@@ -115,24 +152,27 @@
             const file = e.target.files[0];
             const apiKey = apiKeyInput.value;
             if (!apiKey) return alert('Please enter your Gemini API Key.');
-            if (!file || file.type !== 'application/pdf') return alert('Please select a PDF file.');
+            if (!file) return alert('Please select a file.');
 
-            showStatus('Extracting PDF text...');
-            const pdfData = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
-            
-            let fullText = '';
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const textContent = await page.getTextContent();
-                fullText += textContent.items.map(item => item.str).join(' ') + ' ';
+            showStatus('Extracting file content...');
+            const text = await extractTextFromFile(file);
+            if (!text) {
+                hideStatus();
+                return alert('Could not extract text from the file.');
             }
 
             showStatus('AI is summarizing...');
-            const summary = await callGemini(fullText, apiKey);
-            if (!summary) return hideStatus();
+            const customPrompt = document.getElementById('customPrompt').value.trim();
+            const summary = await callGemini(text, apiKey, customPrompt);
+            if (!summary) {
+                hideStatus();
+                return;
+            }
 
-            buildPresentation(summary, file.name);
+            slidesData = summary; // assume summary is array of slide objects
+            populateSlidesPreview(slidesData);
+            hideStatus();
+            previewModal.classList.remove('hidden');
         }
 
         function getStyleInstruction(style) {
