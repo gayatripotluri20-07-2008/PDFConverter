@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to PPTX Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-xl w-full bg-white rounded-2xl shadow-xl p-8">
+        <h1 class="text-3xl font-extrabold text-slate-900 mb-2">PDF to PPTX</h1>
+        <p class="text-slate-500 mb-8">Convert your PDFs to PowerPoint presentations instantly, right in your browser.</p>
+        
+        <div id="dropZone" class="border-4 border-dashed border-slate-200 rounded-xl p-10 text-center cursor-pointer hover:border-indigo-400 transition-all duration-300">
+            <input type="file" id="fileInput" class="hidden" accept="application/pdf">
+            <div id="dropText">
+                <p class="text-lg font-medium text-slate-700">Drag & Drop PDF here</p>
+                <p class="text-sm text-slate-400 mt-1">or click to upload</p>
+            </div>
+            <div id="status" class="hidden">
+                <p class="text-indigo-600 font-semibold" id="statusText">Processing...</p>
+            </div>
+        </div>
+
+        <button id="downloadBtn" class="hidden mt-6 w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors">
+            Download PowerPoint
+        </button>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const status = document.getElementById('status');
+        const statusText = document.getElementById('statusText');
+        const dropText = document.getElementById('dropText');
+
+        let presentation = null;
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFile);
+        
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-indigo-400'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-indigo-400'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-indigo-400');
+            handleFile({ target: { files: e.dataTransfer.files } });
+        });
+
+        async function handleFile(e) {
+            const file = e.target.files[0];
+            if (!file || file.type !== 'application/pdf') return alert('Please select a PDF file.');
+
+            showStatus('Extracting content...');
+            const pdfData = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+
+            presentation = new PptxGenJS();
+            presentation.layout = 'LAYOUT_16x9';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                showStatus(`Processing page ${i} of ${pdf.numPages}...`);
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const textItems = textContent.items.map(item => item.str).join(' ');
+
+                const slide = presentation.addSlide();
+                slide.addText(`Slide ${i}`, { x: 0.5, y: 0.2, fontSize: 18, bold: true });
+                slide.addText(textItems.substring(0, 500) + (textItems.length > 500 ? '...' : ''), { 
+                    x: 0.5, y: 1.0, fontSize: 14, w: '90%' 
+                });
+            }
+
+            hideStatus();
+            downloadBtn.classList.remove('hidden');
+            downloadBtn.onclick = () => presentation.writeFile({ fileName: `${file.name.replace('.pdf', '')}.pptx` });
+        }
+
+        function showStatus(msg) {
+            dropText.classList.add('hidden');
+            status.classList.remove('hidden');
+            statusText.textContent = msg;
+        }
+
+        function hideStatus() {
+            status.classList.add('hidden');
+            dropText.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
