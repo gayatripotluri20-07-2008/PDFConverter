@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chemistry PPT Generator</title>
+    <title>PDF to PPT</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -11,10 +11,44 @@
 <body class="bg-slate-900 min-h-screen flex items-center justify-center p-4">
 
     <div class="max-w-xl w-full bg-slate-800 rounded-2xl shadow-xl p-8 border border-slate-700">
-        <h1 class="text-3xl font-extrabold text-white mb-2">AI Chemistry PPT Gen</h1>
-        <p class="text-slate-400 mb-6">Convert your PDF into an AI-structured Chemistry presentation.</p>
+        <h1 class="text-3xl font-extrabold text-white mb-2">PDF to PPT</h1>
+        <p class="text-slate-400 mb-6">Convert your PDF into an AI-structured presentation.</p>
         
-        <input type="password" id="apiKey" placeholder="Paste Gemini API Key" class="w-full p-3 mb-4 rounded-lg bg-slate-700 text-white placeholder-slate-400 border border-slate-600 focus:ring-2 focus:ring-teal-500 outline-none">
+        <div class="flex flex-col mb-4">
+            <label for="apiKey" class="text-slate-400 mb-1">Gemini API Key</label>
+            <div class="flex items-center">
+                <input type="password" id="apiKey" placeholder="Paste Gemini API Key" class="flex-1 p-3 rounded-lg bg-slate-700 text-white placeholder-slate-400 border border-slate-600 focus:ring-2 focus:ring-teal-500 outline-none">
+                <a href="#" id="apiHelpLink" class="ml-2 text-teal-400 hover:text-teal-300 underline">How to get your personal API id?</a>
+            </div>
+        </div>
+
+        <!-- Modal for API help -->
+        <div id="apiModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 w-96 max-h-[80vh] overflow-y-auto">
+                <div class="flex justify-between items-start mb-4">
+                    <h2 class="text-xl font-semibold text-slate-900">How to get your Gemini API Key</h2>
+                    <button id="modalCloseBtn" class="text-slate-400 hover:text-slate-600">&times;</button>
+                </div>
+                <ol class="list-decimal list-inside space-y-2 text-slate-700">
+                    <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-teal-500 underline">Google AI Studio</a>.</li>
+                    <li>Sign in with your Google account.</li>
+                    <li>Click "Get API key" → "Create API key".</li>
+                    <li>Copy the generated key.</li>
+                    <li>Paste it into the field above.</li>
+                </ol>
+                <p class="mt-4 text-slate-500 text-sm">Keep your key secret; never share it publicly.</p>
+            </div>
+        </div>
+
+        <label for="styleSelect" class="text-slate-400 mb-1 block">Choose Presentation Style</label>
+        <select id="styleSelect" class="w-full p-3 rounded-lg bg-slate-700 text-white placeholder-slate-400 border border-slate-600 focus:ring-2 focus:ring-teal-500 outline-none mb-4">
+            <option value="Gen Z">Gen Z (Vibrant colors, bold modern fonts, high-energy layouts)</option>
+            <option value="Commercial / Formal">Commercial / Formal (Clean corporate layout, professional tones, minimal distractions)</option>
+            <option value="Less Words">Less Words (Heavy structural focus, strictly short key phrases and minimal text blocks)</option>
+            <option value="Study Purpose">Study Purpose (Deeply structured summaries highlighting core educational concepts and formulas)</option>
+            <option value="Presentation Mode">Presentation Mode (High visual contrast optimized for large screens)</option>
+            <option value="Mind Maps in PPT">Mind Maps in PPT (Visual flow diagrams, connecting lines, and block structures drawn on the slides)</option>
+        </select>
 
         <div id="dropZone" class="border-4 border-dashed border-slate-600 rounded-xl p-10 text-center cursor-pointer hover:border-teal-500 transition-all duration-300">
             <input type="file" id="fileInput" class="hidden" accept="application/pdf">
@@ -42,8 +76,25 @@
         const statusText = document.getElementById('statusText');
         const dropText = document.getElementById('dropText');
         const apiKeyInput = document.getElementById('apiKey');
+        const apiHelpLink = document.getElementById('apiHelpLink');
+        const apiModal = document.getElementById('apiModal');
+        const modalCloseBtn = document.getElementById('modalCloseBtn');
+        const styleSelect = document.getElementById('styleSelect');
 
         let presentation = null;
+        let selectedStyle = styleSelect.value;
+
+        // Modal controls
+        apiHelpLink.addEventListener('click', e => {
+            e.preventDefault();
+            apiModal.classList.remove('hidden');
+        });
+        modalCloseBtn.addEventListener('click', () => {
+            apiModal.classList.add('hidden');
+        });
+        apiModal.addEventListener('click', e => {
+            if (e.target === apiModal) apiModal.classList.add('hidden');
+        });
 
         dropZone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', handleFile);
@@ -54,6 +105,10 @@
             e.preventDefault();
             dropZone.classList.remove('border-teal-500');
             handleFile({ target: { files: e.dataTransfer.files } });
+        });
+
+        styleSelect.addEventListener('change', e => {
+            selectedStyle = e.target.value;
         });
 
         async function handleFile(e) {
@@ -80,16 +135,57 @@
             buildPresentation(summary, file.name);
         }
 
+        function getStyleInstruction(style) {
+            switch (style) {
+                case 'Gen Z':
+                    return 'Use vibrant colors, bold modern fonts, and high-energy layouts. Keep language youthful and dynamic.';
+                case 'Commercial / Formal':
+                    return 'Use a clean corporate layout, professional tones, and minimal distractions. Language should be formal and concise.';
+                case 'Less Words':
+                    return 'Keep text bullet points under 5 words per slide. Focus on heavy structural representation with minimal text.';
+                case 'Study Purpose':
+                    return 'Provide deeply structured summaries highlighting core educational concepts, formulas, and key learning objectives.';
+                case 'Presentation Mode':
+                    return 'Optimize for high visual contrast suitable for large screens. Use large, legible text and clear visual hierarchy.';
+                case 'Mind Maps in PPT':
+                    return 'Create visual flow diagrams with connecting lines and block structures to represent relationships between concepts.';
+                default:
+                    return '';
+            }
+        }
+
+        function getStyleColors(style) {
+            // Returns {background, text, accent}
+            switch (style) {
+                case 'Gen Z':
+                    return {background: '#ff6b6b', text: '#ffffff', accent: '#4ecdc4'};
+                case 'Commercial / Formal':
+                    return {background: '#ffffff', text: '#000000', accent: '#2c3e50'};
+                case 'Less Words':
+                    return {background: '#f8f9fa', text: '#212529', accent: '#adb5bd'};
+                case 'Study Purpose':
+                    return {background: '#e3f2fd', text: '#0d47a1', accent: '#1976d2'};
+                case 'Presentation Mode':
+                    return {background: '#000000', text: '#ffffff', accent: '#ffeb3b'};
+                case 'Mind Maps in PPT':
+                    return {background: '#fafafa', text: '#333333', accent: '#607d8b'};
+                default:
+                    return {background: '#0f172a', text: '#ffffff', accent: '#14b8a6'}; // fallback deep navy/teal
+            }
+        }
+
         async function callGemini(text, apiKey) {
-            const prompt = "Summarize this Chemistry textbook chapter into a 5-to-10 slide presentation. Return ONLY valid JSON format. The structure should be an array of objects, where each object has: { 'title': 'Slide title', 'content': ['bullet 1', 'bullet 2'], 'notes': 'Punchy slide notes' }. Do not include any extra text, markdown code blocks, or explanations.";
-            
+            const styleInstruction = getStyleInstruction(selectedStyle);
+            const prompt = `Summarize this Chemistry textbook chapter into a 5-to-10 slide presentation. Return ONLY valid JSON format. The structure should be an array of objects, where each object has: { 'title': 'Slide title', 'content': ['bullet 1', 'bullet 2'], 'notes': 'Punchy slide notes' }. Do not include any extra text, markdown code blocks, or explanations.`;
+            const fullPrompt = `${prompt}\n\nAdditional style instruction: ${styleInstruction}`;
+
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         system_instruction: { parts: [{ text: "You are a professional Chemistry Professor. Analyze the uploaded Chemical Kinetics text. Completely summarize all formulas, reaction rates, and core text concepts into 6 distinct presentation slides. Return the structured summary exactly in the requested JSON format so pptxgenjs can parse it cleanly." }] },
-                        contents: [{ parts: [{ text: `${prompt}\n\nText: ${text.substring(0, 30000)}` }] }] 
+                        contents: [{ parts: [{ text: `${fullPrompt}\n\nText: ${text.substring(0, 30000)}` }] }] 
                     })
                 });
 
@@ -109,22 +205,43 @@
             presentation = new PptxGenJS();
             presentation.layout = 'LAYOUT_16x9';
 
+            const colors = getStyleColors(selectedStyle);
             // Define Master Slide
             presentation.defineSlideMaster({
                 title: 'MASTER_SLIDE',
-                background: { color: '0f172a' },
+                background: { color: colors.background },
                 objects: [
-                    { text: { text: 'Chemical Kinetics Summary', options: { x: 0.5, y: 0.1, fontSize: 14, color: '14b8a6' } } }
+                    { text: { text: 'Chemical Kinetics Summary', options: { x: 0.5, y: 0.1, fontSize: 14, color: colors.accent } } }
                 ]
             });
 
             slides.forEach((slideData) => {
                 const slide = presentation.addSlide({ masterName: 'MASTER_SLIDE' });
-                slide.addText(slideData.title, { x: 0.5, y: 0.5, fontSize: 32, bold: true, color: 'ffffff' });
-                slide.addText(slideData.content.map(c => ({ text: c, options: { bullet: true, color: 'ffffff' } })), { 
-                    x: 0.5, y: 1.5, fontSize: 18, color: 'ffffff', w: '90%' 
+                slide.addText(slideData.title, { x: 0.5, y: 0.5, fontSize: 32, bold: true, color: colors.text });
+                slide.addText(slideData.content.map(c => ({ text: c, options: { bullet: true, color: colors.text } })), { 
+                    x: 0.5, y: 1.5, fontSize: 18, color: colors.text, w: '90%' 
                 });
                 slide.addNotes(slideData.notes);
+                // For Mind Maps style, attempt to add some decorative shapes
+                if (selectedStyle === 'Mind Maps in PPT') {
+                    // Example: add a circle shape (if supported)
+                    try {
+                        slide.addShape({ 
+                            type: 'ellipse',
+                            x: 1, y: 3, w: 2, h: 2,
+                            fill: { color: colors.accent },
+                            line: { width: 1, color: colors.accent }
+                        });
+                        // add a line
+                        slide.addShape({ 
+                            type: 'line',
+                            x1: 3, y1: 4, x2: 6, y2: 4,
+                            line: { width: 2, color: colors.accent }
+                        });
+                    } catch (e) {
+                        // Shape API may not exist; ignore
+                    }
+                }
             });
 
             hideStatus();
